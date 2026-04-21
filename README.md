@@ -96,7 +96,3 @@ VS Code's `workspaceStorage` is auto-detected on Linux, macOS, and Windows.
 | Linux   | `~/.config/Code/User/workspaceStorage` |
 | macOS   | `~/Library/Application Support/Code/User/workspaceStorage` |
 | Windows | `%APPDATA%\Code\User\workspaceStorage` |
-
-## License
-
-MIT — Copyright (c) DevXT LLC 2026
