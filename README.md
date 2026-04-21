@@ -13,31 +13,30 @@ pip install copilotexport
 ### CLI
 
 ```bash
-# Export everything to ./_copilot/ and create CopilotExport.zip
+# Default: bundle every Copilot session into ./CopilotForAGiXT.zip,
+# ready to upload to AGiXT (Conversations sidebar -> Import).
 copilotexport
 
-# Custom source and output
-copilotexport --src /path/to/Code/User/workspaceStorage --out ~/my-export
+# Write the zip somewhere else
+copilotexport --out ~/CopilotForAGiXT.zip
 
-# Skip Markdown rendering (index + raw JSON only, much faster)
-copilotexport --no-markdown
+# Custom source workspaceStorage directory
+copilotexport --src /path/to/Code/User/workspaceStorage
 
-# Skip the zip file
-copilotexport --no-zip
-
-# Skip copying raw VS Code JSON (markdown + index only)
-copilotexport --no-raw
-
-# Bundle every session into a single zip ready to upload to AGiXT's
-# /v1/conversation/import endpoint (auto-detected as the 'copilot' source).
-copilotexport --agixt-zip ~/CopilotForAGiXT.zip
+# Full human-browseable export tree (raw JSON + Markdown + index +
+# CopilotExport.zip) — slower, useful for grepping / archiving.
+copilotexport --full
+copilotexport --full --out ~/my-export
+copilotexport --full --no-markdown   # skip Markdown rendering (much faster)
+copilotexport --full --no-zip        # skip CopilotExport.zip
+copilotexport --full --no-raw        # skip raw VS Code JSON copies
 ```
 
 ### Importing into AGiXT
 
-`--agixt-zip PATH` writes a zip containing a single `conversations.json` —
+The default mode writes a zip containing a single `conversations.json` —
 a JSON array of raw VS Code session dicts. Upload it through the **Import
-Conversations** control on the AGiXT settings page, or POST it directly:
+Conversations** control in the AGiXT web UI, or POST it directly:
 
 ```bash
 curl -F file=@CopilotForAGiXT.zip -F agent_name=XT \
@@ -46,8 +45,9 @@ curl -F file=@CopilotForAGiXT.zip -F agent_name=XT \
 ```
 
 AGiXT detects the format as `copilot`, prefixes imported conversations with
-`[Copilot]`, and renders Copilot tool invocations as `[SUBACTIVITY]` blocks
-in the chat UI.
+`[Copilot]`, preserves each conversation's original timestamps, and renders
+Copilot tool invocations / thinking blocks as `[SUBACTIVITY]` entries in the
+chat UI.
 
 ### Python API
 

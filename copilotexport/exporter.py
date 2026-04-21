@@ -468,11 +468,18 @@ def export_agixt_zip(src: Path, zip_path: Path) -> dict:
     ``/v1/conversation/import`` endpoint will auto-detect this as the
     ``copilot`` format.
 
+    Sessions are streamed straight from disk into the zip entry one at a
+    time so peak memory stays small even when the full export is many GB.
+
     Returns a summary dict with ``sessions``, ``zip``, and ``bytes`` fields.
     """
-    sessions = collect_sessions(src)
+    if not src.exists():
+        raise FileNotFoundError(f"workspaceStorage not found: {src}")
+
     zip_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(sessions).encode("utf-8")
+    count = 0
+    skipped = 0
+
     with zipfile.ZipFile(
         zip_path,
         "w",
@@ -480,10 +487,197 @@ def export_agixt_zip(src: Path, zip_path: Path) -> dict:
         compresslevel=6,
         allowZip64=True,
     ) as z:
-        z.writestr("conversations.json", payload)
+        info = zipfile.ZipInfo("conversations.json")
+        info.compress_type = zipfile.ZIP_DEFLATED
+        with z.open(info, "w", force_zip64=True) as out:
+            out.write(b"[")
+            first = True
+            for ws in sorted(p for p in src.iterdir() if p.is_dir()):
+                chat_dir = ws / "chatSessions"
+                if not chat_dir.is_dir():
+                    continue
+                label = workspace_label(ws)
+                for f in sorted(chat_dir.glob("*.json")):
+                    try:
+                        raw = f.read_bytes()
+                        # Cheap validation + canonicalization without keeping
+                        # the dict around longer than necessary.
+                        data = json.loads(raw)
+                    except Exception as exc:
+                        print(f"  ! skip {f}: {exc}", file=sys.stderr)
+                        skipped += 1
+                        continue
+                    if not isinstance(data, dict):
+                        skipped += 1
+                        continue
+                    data.setdefault("workspaceHash", ws.name)
+                    data.setdefault("workspaceLabel", label)
+                    chunk = json.dumps(data, separators=(",", ":")).encode("utf-8")
+                    del data
+                    if not first:
+                        out.write(b",")
+                    out.write(chunk)
+                    first = False
+                    count += 1
+                    if count % 50 == 0:
+                        print(f"  ... wrote {count} sessions", flush=True)
+            out.write(b"]")
+
     size = zip_path.stat().st_size
     print(
-        f"Wrote {len(sessions)} sessions -> {zip_path}"
-        f" ({size / (1024 * 1024):.1f} MB)"
+        f"Wrote {count} sessions"
+        + (f" (skipped {skipped})" if skipped else "")
+        + f" -> {zip_path} ({size / (1024 * 1024):.1f} MB)"
     )
-    return {"sessions": len(sessions), "zip": str(zip_path), "bytes": size}
+    return {"sessions": count, "skipped": skipped, "zip": str(zip_path), "bytes": size}
+
+
+def _iter_session_chunks(src: Path):
+    """Yield ``(chunk_bytes, source_path)`` for every session under *src*.
+
+    ``chunk_bytes`` is the canonical compact JSON representation of a single
+    VS Code chat-session dict (with ``workspaceHash``/``workspaceLabel``
+    injected) — exactly what should appear as one element of the
+    ``conversations.json`` array.
+    """
+    for ws in sorted(p for p in src.iterdir() if p.is_dir()):
+        chat_dir = ws / "chatSessions"
+        if not chat_dir.is_dir():
+            continue
+        label = workspace_label(ws)
+        for f in sorted(chat_dir.glob("*.json")):
+            try:
+                data = json.loads(f.read_bytes())
+            except Exception as exc:
+                print(f"  ! skip {f}: {exc}", file=sys.stderr)
+                continue
+            if not isinstance(data, dict):
+                continue
+            data.setdefault("workspaceHash", ws.name)
+            data.setdefault("workspaceLabel", label)
+            yield json.dumps(data, separators=(",", ":")).encode("utf-8"), f
+
+
+def export_agixt_batches(
+    src: Path,
+    out_dir: Path,
+    batch_mb: int = 100,
+    prefix: str = "CopilotForAGiXT",
+) -> dict:
+    """Bundle sessions into multiple AGiXT-importable zips.
+
+    Each output zip contains a ``conversations.json`` whose uncompressed
+    payload is capped at roughly ``batch_mb`` megabytes. This keeps each
+    upload well under Cloudflare's per-request limits and bounds the peak
+    RAM the AGiXT server uses when it ``json.loads()`` the assembled file.
+
+    A single oversized session always lands in its own zip so we never
+    silently drop anything.
+    """
+    if not src.exists():
+        raise FileNotFoundError(f"workspaceStorage not found: {src}")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cap = max(1, batch_mb) * 1024 * 1024
+
+    batches: list[dict] = []
+    batch_idx = 0
+    current_zip = None
+    current_out = None
+    current_bytes = 0
+    current_count = 0
+    current_first = True
+    current_path: Path | None = None
+    total_count = 0
+
+    def _open_batch() -> None:
+        nonlocal current_zip, current_out, current_bytes, current_count, current_first, current_path, batch_idx
+        batch_idx += 1
+        current_path = out_dir / f"{prefix}_{batch_idx:03d}.zip"
+        current_zip = zipfile.ZipFile(
+            current_path,
+            "w",
+            compression=zipfile.ZIP_DEFLATED,
+            compresslevel=6,
+            allowZip64=True,
+        )
+        info = zipfile.ZipInfo("conversations.json")
+        info.compress_type = zipfile.ZIP_DEFLATED
+        current_out = current_zip.open(info, "w", force_zip64=True)
+        current_out.write(b"[")
+        current_bytes = 1
+        current_count = 0
+        current_first = True
+
+    def _close_batch() -> None:
+        nonlocal current_zip, current_out, current_path
+        if current_out is None or current_zip is None or current_path is None:
+            return
+        current_out.write(b"]")
+        current_out.close()
+        current_zip.close()
+        size = current_path.stat().st_size
+        batches.append(
+            {
+                "path": str(current_path),
+                "sessions": current_count,
+                "bytes": size,
+            }
+        )
+        print(
+            f"  -> {current_path.name}: {current_count} sessions, "
+            f"{size / (1024 * 1024):.1f} MB compressed"
+        )
+        current_out = None
+        current_zip = None
+        current_path = None
+
+    try:
+        _open_batch()
+        for chunk, _src_file in _iter_session_chunks(src):
+            sep = b"" if current_first else b","
+            projected = current_bytes + len(sep) + len(chunk) + 1  # +1 for "]"
+            if projected > cap and current_count > 0:
+                _close_batch()
+                _open_batch()
+                sep = b""
+            assert current_out is not None
+            current_out.write(sep)
+            current_out.write(chunk)
+            current_bytes += len(sep) + len(chunk)
+            current_count += 1
+            current_first = False
+            total_count += 1
+            if total_count % 50 == 0:
+                print(f"  ... processed {total_count} sessions", flush=True)
+        if current_count > 0:
+            _close_batch()
+        else:
+            # Empty trailing batch (no sessions hit it). Discard it.
+            assert (
+                current_out is not None
+                and current_zip is not None
+                and current_path is not None
+            )
+            current_out.write(b"]")
+            current_out.close()
+            current_zip.close()
+            current_path.unlink(missing_ok=True)
+    except BaseException:
+        if current_out is not None:
+            try:
+                current_out.close()
+            except Exception:
+                pass
+        if current_zip is not None:
+            try:
+                current_zip.close()
+            except Exception:
+                pass
+        raise
+
+    print(
+        f"Wrote {total_count} sessions across {len(batches)} batch zip(s) "
+        f"(cap ~{batch_mb} MB uncompressed each) -> {out_dir}"
+    )
+    return {"sessions": total_count, "batches": batches, "out_dir": str(out_dir)}
