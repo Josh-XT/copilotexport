@@ -421,3 +421,69 @@ def export(
         summary["zip"] = str(zip_path)
         print(f"Done. zip size: {zip_path.stat().st_size / (1024 * 1024):.1f} MB")
     return summary
+
+
+# ---------------------------------------------------------------------------
+# AGiXT importer-compatible bundle
+# ---------------------------------------------------------------------------
+
+
+def collect_sessions(src: Path) -> list[dict]:
+    """Return the raw VS Code chat-session dicts found under *src*.
+
+    Each session also gets a few convenience keys (``workspaceHash``,
+    ``workspaceLabel``) so downstream importers can attribute them, but the
+    original VS Code keys (``sessionId``, ``customTitle``, ``requests``, ...)
+    are preserved verbatim — this is what the AGiXT ``copilot`` parser walks.
+    """
+    if not src.exists():
+        raise FileNotFoundError(f"workspaceStorage not found: {src}")
+
+    sessions: list[dict] = []
+    for ws in sorted(p for p in src.iterdir() if p.is_dir()):
+        chat_dir = ws / "chatSessions"
+        if not chat_dir.is_dir():
+            continue
+        label = workspace_label(ws)
+        for f in sorted(chat_dir.glob("*.json")):
+            try:
+                data = json.loads(f.read_text())
+            except Exception as exc:
+                print(f"  ! skip {f}: {exc}", file=sys.stderr)
+                continue
+            if not isinstance(data, dict):
+                continue
+            data.setdefault("workspaceHash", ws.name)
+            data.setdefault("workspaceLabel", label)
+            sessions.append(data)
+    sessions.sort(key=lambda d: d.get("creationDate") or 0)
+    return sessions
+
+
+def export_agixt_zip(src: Path, zip_path: Path) -> dict:
+    """Bundle all sessions found under *src* as an AGiXT-importable zip.
+
+    The resulting archive contains a single ``conversations.json`` at the
+    root — a JSON array of raw VS Code session dicts. The AGiXT
+    ``/v1/conversation/import`` endpoint will auto-detect this as the
+    ``copilot`` format.
+
+    Returns a summary dict with ``sessions``, ``zip``, and ``bytes`` fields.
+    """
+    sessions = collect_sessions(src)
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(sessions).encode("utf-8")
+    with zipfile.ZipFile(
+        zip_path,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=6,
+        allowZip64=True,
+    ) as z:
+        z.writestr("conversations.json", payload)
+    size = zip_path.stat().st_size
+    print(
+        f"Wrote {len(sessions)} sessions -> {zip_path}"
+        f" ({size / (1024 * 1024):.1f} MB)"
+    )
+    return {"sessions": len(sessions), "zip": str(zip_path), "bytes": size}

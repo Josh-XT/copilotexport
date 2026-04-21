@@ -27,7 +27,27 @@ copilotexport --no-zip
 
 # Skip copying raw VS Code JSON (markdown + index only)
 copilotexport --no-raw
+
+# Bundle every session into a single zip ready to upload to AGiXT's
+# /v1/conversation/import endpoint (auto-detected as the 'copilot' source).
+copilotexport --agixt-zip ~/CopilotForAGiXT.zip
 ```
+
+### Importing into AGiXT
+
+`--agixt-zip PATH` writes a zip containing a single `conversations.json` —
+a JSON array of raw VS Code session dicts. Upload it through the **Import
+Conversations** control on the AGiXT settings page, or POST it directly:
+
+```bash
+curl -F file=@CopilotForAGiXT.zip -F agent_name=XT \
+     -H "Authorization: $JWT" \
+     http://localhost:7437/v1/conversation/import
+```
+
+AGiXT detects the format as `copilot`, prefixes imported conversations with
+`[Copilot]`, and renders Copilot tool invocations as `[SUBACTIVITY]` blocks
+in the chat UI.
 
 ### Python API
 

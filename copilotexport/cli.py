@@ -5,11 +5,15 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from copilotexport.exporter import default_workspace_storage, export
+from copilotexport.exporter import (
+    default_workspace_storage,
+    export,
+    export_agixt_zip,
+)
 
 
 def main() -> int:
-    """Entry point for the ``copilot-export`` command."""
+    """Entry point for the ``copilotexport`` command."""
     parser = argparse.ArgumentParser(
         prog="copilotexport",
         description=(
@@ -45,7 +49,21 @@ def main() -> int:
         action="store_true",
         help="Skip copying raw VS Code session JSON (markdown/index only)",
     )
+    parser.add_argument(
+        "--agixt-zip",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Instead of the standard export, write a single zip at PATH "
+            "containing conversations.json — ready to upload to AGiXT's "
+            "/v1/conversation/import endpoint (auto-detected as 'copilot')."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.agixt_zip is not None:
+        export_agixt_zip(src=args.src, zip_path=args.agixt_zip)
+        return 0
 
     export(
         src=args.src,

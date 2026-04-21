@@ -9,8 +9,10 @@ with open(os.path.join(os.path.dirname(__file__), "version"), encoding="utf-8") 
     __version__ = _f.read().strip()
 
 from copilotexport.exporter import (  # noqa: E402
+    collect_sessions,
     default_workspace_storage,
     export,
+    export_agixt_zip,
     ms_to_date,
     ms_to_iso,
     render_markdown,
@@ -20,8 +22,10 @@ from copilotexport.exporter import (  # noqa: E402
 
 __all__ = [
     "__version__",
+    "collect_sessions",
     "default_workspace_storage",
     "export",
+    "export_agixt_zip",
     "ms_to_date",
     "ms_to_iso",
     "render_markdown",
