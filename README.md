@@ -8,13 +8,36 @@ Export all of your VS Code GitHub Copilot Chat conversations — including full 
 pip install copilotexport
 ```
 
+## Quick Start for AGiXT Users
+
+Run this:
+
+```bash
+pip install copilotexport && copilotexport
+```
+
+That writes `./CopilotForAGiXT.zip` in your current directory.
+
+Then in AGiXT:
+
+1. Open the agent you want the imported conversations attached to.
+2. Go to that agent's **Settings** page.
+3. Use **Import Conversations** and upload `CopilotForAGiXT.zip`.
+4. AGiXT auto-detects the file as a Copilot export and imports the chats with their original timestamps, tool calls, and thinking blocks.
+
+If you want the zip written somewhere else, use:
+
+```bash
+copilotexport --out ~/CopilotForAGiXT.zip
+```
+
 ## Usage
 
 ### CLI
 
 ```bash
 # Default: bundle every Copilot session into ./CopilotForAGiXT.zip,
-# ready to upload to AGiXT (Conversations sidebar -> Import).
+# ready to upload from your AGiXT agent's Settings page -> Import Conversations.
 copilotexport
 
 # Write the zip somewhere else
@@ -35,8 +58,8 @@ copilotexport --full --no-raw        # skip raw VS Code JSON copies
 ### Importing into AGiXT
 
 The default mode writes a zip containing a single `conversations.json` —
-a JSON array of raw VS Code session dicts. Upload it through the **Import
-Conversations** control in the AGiXT web UI, or POST it directly:
+a JSON array of raw VS Code session dicts. Upload it from the target agent's
+**Settings** page using **Import Conversations**, or POST it directly:
 
 ```bash
 curl -F file=@CopilotForAGiXT.zip -F agent_name=XT \
