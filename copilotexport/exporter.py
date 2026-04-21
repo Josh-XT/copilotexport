@@ -60,11 +60,7 @@ def workspace_label(ws_dir: Path) -> str:
             info = json.loads(info_file.read_text())
         except Exception:
             info = {}
-        uri = (
-            info.get("folder")
-            or info.get("workspace")
-            or info.get("configuration")
-        )
+        uri = info.get("folder") or info.get("workspace") or info.get("configuration")
         if uri:
             try:
                 parsed = urlparse(uri)

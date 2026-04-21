@@ -25,7 +25,7 @@ setup(
     python_requires=">=3.10",
     install_requires=[],
     entry_points={
-        "console_scripts": ["copilot-export=copilotexport.cli:main"],
+        "console_scripts": ["copilotexport=copilotexport.cli:main"],
     },
     classifiers=[
         "Development Status :: 4 - Beta",

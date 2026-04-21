@@ -11,7 +11,7 @@ from copilotexport.exporter import default_workspace_storage, export
 def main() -> int:
     """Entry point for the ``copilot-export`` command."""
     parser = argparse.ArgumentParser(
-        prog="copilot-export",
+        prog="copilotexport",
         description=(
             "Export all VS Code GitHub Copilot Chat conversations to JSON and "
             "Markdown. Reads session files from VS Code's workspaceStorage "

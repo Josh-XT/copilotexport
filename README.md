@@ -14,19 +14,19 @@ pip install copilotexport
 
 ```bash
 # Export everything to ./_copilot/ and create CopilotExport.zip
-copilot-export
+copilotexport
 
 # Custom source and output
-copilot-export --src /path/to/Code/User/workspaceStorage --out ~/my-export
+copilotexport --src /path/to/Code/User/workspaceStorage --out ~/my-export
 
 # Skip Markdown rendering (index + raw JSON only, much faster)
-copilot-export --no-markdown
+copilotexport --no-markdown
 
 # Skip the zip file
-copilot-export --no-zip
+copilotexport --no-zip
 
 # Skip copying raw VS Code JSON (markdown + index only)
-copilot-export --no-raw
+copilotexport --no-raw
 ```
 
 ### Python API
